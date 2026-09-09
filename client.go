@@ -168,6 +168,9 @@ func (this *Client) handlerDealMessage(c *client.Client, msg ios.Acker) {
 	case protocol.TypeKline:
 		resp, err = protocol.MKline.Decode(f.Data, val.(protocol.KlineCache))
 
+	case protocol.TypeXdxr:
+		resp, err = protocol.MXdxr.Decode(f.Data)
+
 	default:
 		err = fmt.Errorf("通讯类型未解析:0x%X", f.Type)
 
@@ -742,6 +745,23 @@ func (this *Client) GetKlineDayAll(code string) (*protocol.KlineResp, error) {
 
 func (this *Client) GetKlineDayUntil(code string, f func(k *protocol.Kline) bool) (*protocol.KlineResp, error) {
 	return this.GetKlineUntil(protocol.TypeKlineDay, code, f)
+}
+
+// GetXdxr 获取除权除息信息(单次协议请求,约50ms)
+func (this *Client) GetXdxr(code string) (*protocol.XdxrResp, error) {
+	f, err := protocol.MXdxr.Frame(code)
+	if err != nil {
+		return nil, err
+	}
+	result, err := this.SendFrame(f)
+	if err != nil {
+		return nil, err
+	}
+	resp, ok := result.(*protocol.XdxrResp)
+	if !ok {
+		return nil, fmt.Errorf("除权除息信息解析失败:%T", result)
+	}
+	return resp, nil
 }
 
 // GetKlineWeek 获取周k线数据

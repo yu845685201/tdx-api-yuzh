@@ -1333,3 +1333,47 @@ func fetchIndexAll(code, klineType string) ([]*protocol.Kline, error) {
 		return resp.List, nil
 	}
 }
+
+// handleGetKlineRecent 获取原始(不复权)K线尾部数据
+//
+// 与 handleGetKlineHistory 的区别:本接口走单次协议请求(client.GetKlineDay)取最近 N 条,
+// 不做 800 条批拼接,耗时约 50ms;响应为原始域数据,amount 为真实成交额。
+// 返回结构与 /api/kline-history 一致,调用方解析代码可复用。
+func handleGetKlineRecent(w http.ResponseWriter, r *http.Request) {
+	code := r.URL.Query().Get("code")
+	klineType := r.URL.Query().Get("type")
+	limitStr := strings.TrimSpace(r.URL.Query().Get("limit"))
+
+	if code == "" {
+		errorResponse(w, "股票代码不能为空")
+		return
+	}
+
+	//默认2条,上限800(协议单次请求上限)
+	limit := uint16(2)
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			if l > 800 {
+				l = 800
+			}
+			limit = uint16(l)
+		}
+	}
+
+	var resp *protocol.KlineResp
+	var err error
+
+	switch klineType {
+	case "day":
+		fallthrough
+	default:
+		resp, err = client.GetKlineDay(code, 0, limit)
+	}
+
+	if err != nil {
+		errorResponse(w, fmt.Sprintf("获取K线失败: %v", err))
+		return
+	}
+
+	successResponse(w, resp)
+}

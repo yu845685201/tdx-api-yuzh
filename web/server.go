@@ -781,6 +781,8 @@ func main() {
 	http.HandleFunc("/api/codes", handleGetCodes)
 	http.HandleFunc("/api/batch-quote", handleBatchQuote)
 	http.HandleFunc("/api/kline-history", handleGetKlineHistory)
+	http.HandleFunc("/api/kline-recent", handleGetKlineRecent)
+	http.HandleFunc("/api/kline-qfq", handleGetKlineQfq)
 	http.HandleFunc("/api/index", handleGetIndex)
 	http.HandleFunc("/api/index/all", handleGetIndexAll)
 	http.HandleFunc("/api/market-stats", handleGetMarketStats)
