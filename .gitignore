@@ -1,0 +1,14 @@
+# ===== 运行时数据库（容器运行期持续改写，禁止入库）=====
+web/data/database/*.db
+web/data/database/kline/
+
+# ===== 系统 / 编辑器垃圾文件 =====
+.DS_Store
+
+# ===== Python 缓存 =====
+__pycache__/
+*.pyc
+
+# ===== 大体积压缩包（非源码）=====
+*.rar
+*.zip
