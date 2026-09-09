@@ -6,8 +6,11 @@ TDX股票数据API使用示例
 演示如何使用所有API接口获取股票数据
 """
 
-import requests
+import csv
 import json
+import os
+import requests
+import sys
 from datetime import datetime
 
 # 配置
@@ -241,6 +244,22 @@ class StockAPI:
         if not prefix:
             params['prefix'] = 'false'
         url = f"{self.base_url}/api/etf-codes"
+        response = requests.get(url, params=params)
+        data = response.json()
+        if data['code'] == 0:
+            return data['data']
+        return None
+
+    def get_kline_history(self, code, ktype='day', start_date=None, end_date=None, limit=None):
+        """获取历史K线（范围/条数）"""
+        params = {'code': code, 'type': ktype}
+        if start_date:
+            params['start_date'] = start_date
+        if end_date:
+            params['end_date'] = end_date
+        if limit:
+            params['limit'] = limit
+        url = f"{self.base_url}/api/kline-history"
         response = requests.get(url, params=params)
         data = response.json()
         if data['code'] == 0:
@@ -516,42 +535,24 @@ def example7_realtime_monitor():
 
 
 def example8_data_tasks():
-    """示例8: 批量入库任务管理"""
+    """示例8: pull-kline 可用性测试（最简）"""
     print("\n" + "="*50)
-    print("示例8: 批量入库任务")
+    print("示例8: pull-kline 可用性测试（最简）")
     print("="*50)
     
     api = StockAPI()
     today = datetime.now().strftime("%Y-%m-%d")
     
     try:
-        kline_task = api.create_pull_kline_task(
-            codes=["000001", "600519"],
-            tables=["day", "week"],
-            limit=2,
+        task_id = api.create_pull_kline_task(
+            codes=["000001"],
+            tables=["day"],
+            limit=1,
             start_date=today
         )
-        print(f"创建K线入库任务成功，任务ID: {kline_task}")
+        print(f"创建任务成功，任务ID: {task_id}")
     except Exception as err:
-        print(f"创建K线任务失败: {err}")
-        kline_task = None
-    
-    try:
-        trade_task = api.create_pull_trade_task("000001", start_year=2020)
-        print(f"创建分时成交任务成功，任务ID: {trade_task}")
-    except Exception as err:
-        print(f"创建成交任务失败: {err}")
-        trade_task = None
-    
-    tasks = api.list_tasks()
-    print(f"\n当前任务总数: {len(tasks)}")
-    for task in tasks:
-        print(f"  - {task['id']} [{task['type']}] 状态: {task['status']}")
-    
-    if kline_task:
-        detail = api.get_task(kline_task)
-        if detail:
-            print(f"\nK线任务详情: 状态={detail['status']} 开始于 {detail['started_at']}")
+        print(f"创建任务失败: {err}")
 
 
 def example9_data_services():
@@ -649,6 +650,63 @@ def example10_advanced_endpoints():
                   f"(收盘 {item['current']['close']/1000:.2f} 元)")
 
 
+def example11_kline_history_and_all():
+    """示例11: kline-history 与 kline-all"""
+    print("\n" + "="*50)
+    print("示例11: kline-history 与 kline-all")
+    print("="*50)
+
+    api = StockAPI()
+
+    history = api.get_kline_history("000001", "day", limit=5)
+    if history and history.get('List'):
+        print(f"历史K线返回 {history['Count']} 条，展示末尾 {len(history['List'])} 条:")
+        for item in history['List']:
+            print(f"  {item['Time']} 收:{item['Close']/1000:.2f}")
+
+    kline_all = api.get_kline_all("000001", "day", limit=5)
+    if kline_all and kline_all.get('list'):
+        print(f"\n全量K线返回 {kline_all['count']} 条，展示末尾 {len(kline_all['list'])} 条:")
+        for item in kline_all['list']:
+            print(f"  {item['Time']} 收:{item['Close']/1000:.2f}")
+
+
+def example12_baostock_trade_calendar(year=2024, output_dir="/Users/yuzh/develop/ai/claude/claude-code/workspace/test/data"):
+    print("\n" + "="*50)
+    print(f"示例12: baostock 按年交易日历 {year}")
+    print("="*50)
+
+    try:
+        import baostock as bs
+    except Exception as err:
+        raise RuntimeError(f"baostock 导入失败: {err}") from err
+
+    login = bs.login()
+    if login.error_code != "0":
+        raise RuntimeError(f"baostock 登录失败: {login.error_msg}")
+
+    start_date = f"{year}-01-01"
+    end_date = f"{year}-12-31"
+    rs = bs.query_trade_dates(start_date=start_date, end_date=end_date)
+    if rs.error_code != "0":
+        bs.logout()
+        raise RuntimeError(f"baostock 查询失败: {rs.error_msg}")
+
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, f"baostock_trade_calendar_{year}.csv")
+    row_count = 0
+    with open(output_path, "w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(rs.fields)
+        while rs.next():
+            writer.writerow(rs.get_row_data())
+            row_count += 1
+
+    bs.logout()
+    print(f"输出: {output_path}")
+    print(f"条目数: {row_count}")
+
+
 def main():
     """主函数"""
     print("""
@@ -659,7 +717,18 @@ def main():
     """)
     
     try:
-        # 运行所有示例
+        baostock_year = None
+        for arg in sys.argv[1:]:
+            if arg.startswith("--baostock-year="):
+                value = arg.split("=", 1)[1].strip()
+                if value:
+                    baostock_year = int(value)
+                break
+
+        if baostock_year:
+            example12_baostock_trade_calendar(baostock_year)
+            return
+
         example1_get_quote()
         example2_get_kline()
         example3_search_stock()
@@ -670,6 +739,8 @@ def main():
         example8_data_tasks()
         example9_data_services()
         example10_advanced_endpoints()
+        example11_kline_history_and_all()
+        example12_baostock_trade_calendar()
         
         print("\n" + "="*50)
         print("所有示例运行完成！")
@@ -685,4 +756,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

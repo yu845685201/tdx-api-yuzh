@@ -225,7 +225,11 @@ func (this *Codes) GetCodes(byDatabase bool) ([]*CodeModel, error) {
 	//3. 从服务器获取所有股票代码
 	insert := []*CodeModel(nil)
 	update := []*CodeModel(nil)
-	for _, exchange := range []protocol.Exchange{protocol.ExchangeSH, protocol.ExchangeSZ, protocol.ExchangeBJ} {
+	exchanges := []protocol.Exchange{protocol.ExchangeSH, protocol.ExchangeSZ}
+	if os.Getenv("TDX_SKIP_BJ_CODES") != "1" {
+		exchanges = append(exchanges, protocol.ExchangeBJ)
+	}
+	for _, exchange := range exchanges {
 		resp, err := this.Client.GetCodeAll(exchange)
 		if err != nil {
 			return nil, err

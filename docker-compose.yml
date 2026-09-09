@@ -7,8 +7,11 @@ services:
     ports:
       - "8080:8080"
     restart: unless-stopped
+    volumes:
+      - /Users/yuzh/develop/ai/claude/claude-code/workspace/test/tdx-api/web/data/database:/app/data/database
     environment:
       - TZ=Asia/Shanghai
+      - TDX_SKIP_BJ_CODES=1
     networks:
       - stock-network
     healthcheck:
@@ -24,4 +27,3 @@ services:
 networks:
   stock-network:
     driver: bridge
-

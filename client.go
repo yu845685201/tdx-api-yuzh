@@ -11,6 +11,7 @@ import (
 	"github.com/injoyai/ios/module/common"
 	"github.com/injoyai/logs"
 	"github.com/injoyai/tdx/protocol"
+	"os"
 	"runtime/debug"
 	"sync/atomic"
 	"time"
@@ -230,6 +231,9 @@ func (this *Client) GetCodeAll(exchange protocol.Exchange) (*protocol.CodeResp, 
 	//不放在extend包时防止循环引用
 	//todo 这是临时方案,等通达信有北交所代码列表时再改
 	if exchange == protocol.ExchangeBJ {
+		if os.Getenv("TDX_SKIP_BJ_CODES") == "1" {
+			return resp, nil
+		}
 		codes, err := GetBjCodes()
 		if err != nil {
 			return nil, err
