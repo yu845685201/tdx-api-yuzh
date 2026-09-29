@@ -805,6 +805,9 @@ func main() {
 	http.HandleFunc("/api/tasks/pull-trade", handleCreatePullTradeTask)
 	http.HandleFunc("/api/tasks", handleListTasks)
 	http.HandleFunc("/api/tasks/", handleTaskOperations)
+	// 每日复盘数据采集扩展（server_api_review.go，只新增只读接口，不改动现有接口）
+	http.HandleFunc("/api/ths-factor", handleGetTHSFactor)
+	http.HandleFunc("/api/xdxr", handleGetXdxrEvents)
 
 	port := ":8080"
 	log.Printf("服务启动成功，访问 http://localhost%s\n", port)
