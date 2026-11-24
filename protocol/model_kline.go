@@ -36,6 +36,17 @@ func (this *KlineReq) Bytes(Type uint8) (types.Bytes, error) {
 type KlineResp struct {
 	Count uint16
 	List  []*Kline
+	// CacheMeta 缓存元信息（限流方案 20261120 §3 P0：旧缓存可供明确标注日期的
+	// 历史查询）。omitempty——不设置时 JSON 输出与旧版完全一致，调用方向后兼容。
+	CacheMeta *KlineCacheMeta `json:"cache_meta,omitempty"`
+}
+
+// KlineCacheMeta 缓存来源标注：stale=true 表示该响应来自既有缓存
+// （上游疑似截短/倒退被拒绝重建，或回源为空时的降级服务）
+type KlineCacheMeta struct {
+	AnchorDate int64 `json:"anchor_date,omitempty"` // 缓存锚定日（unix 秒）
+	Stale      bool  `json:"stale,omitempty"`
+	BuiltAt    int64 `json:"built_at,omitempty"`
 }
 
 type Kline struct {

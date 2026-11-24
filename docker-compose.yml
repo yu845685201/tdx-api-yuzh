@@ -12,6 +12,8 @@ services:
     environment:
       - TZ=Asia/Shanghai
       - TDX_SKIP_BJ_CODES=1
+      # 限流方案 20261120 §3 P0：同花顺回源共享节拍（毫秒，0=不限速）
+      - THS_MIN_INTERVAL_MS=500
     networks:
       - stock-network
     healthcheck:

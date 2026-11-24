@@ -370,10 +370,76 @@ func getQfqKlineDayCached(code string, refresh bool, tail int) (*protocol.KlineR
 	if err != nil {
 		return nil, err
 	}
+	//批次4（数据采集链路耗时优化技术方案 V1.1 §3.3）：只在解析成功且非空时更新缓存，
+	//已有有效缓存受保护——上游返回空列表（THS 改版/风控空页）不得清空既有缓存
+	if resp == nil || len(resp.List) == 0 {
+		log.Printf("[qfq] %s 回源结果为空，保留既有缓存不重建", code)
+		if resp == nil {
+			if cached, meta, ok := loadQfqCache(db, code, tail); ok {
+				return withQfqCacheMeta(buildQfqResp(cached), meta, true), nil
+			}
+			return nil, fmt.Errorf("回源结果为空且无有效缓存")
+		}
+		return resp, nil
+	}
+	//限流方案 20261120 §3 P0：截短/倒退防护——回源结果与既有缓存比对，
+	//疑似截短（行数骤减）或历史倒退（锚点回退）时拒绝重建：仅完整响应通过
+	//校验后才替换缓存；旧缓存继续服务并带 stale 标注（当日数据与待补核销
+	//须以实际日期为准，调用方不应把 stale 响应记作当日已齐）
+	if reason := qfqRebuildSanityCheck(db, code, resp); reason != "" {
+		log.Printf("[qfq] %s 回源结果疑似异常，保留既有缓存不重建: %s", code, reason)
+		if cached, meta, ok := loadQfqCache(db, code, tail); ok {
+			return withQfqCacheMeta(buildQfqResp(cached), meta, true), nil
+		}
+		return resp, nil
+	}
 	if err := rebuildQfqCache(db, code, resp); err != nil {
 		log.Printf("[qfq] 重建缓存失败 %s: %v", code, err)
 	}
 	return resp, nil
+}
+
+// qfqRebuildSanityCheck 重建前 sanity（限流方案 20261120 §3 P0）：
+// 与既有缓存比对行数与锚点。返回拒绝原因，空串=放行。
+// 无既有缓存时无从比对，放行（冷启动）。
+// 行数守卫与 Python 侧 replace_his_kline_day 的 0.9 比例同口径（kline_day_replace_min_ratio）。
+func qfqRebuildSanityCheck(db *sql.DB, code string, resp *protocol.KlineResp) string {
+	var oldCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM DayKlineQfq WHERE code=?`, code).Scan(&oldCount); err != nil || oldCount == 0 {
+		return "" // 无既有缓存/查询失败：放行（冷启动或无可比对基线）
+	}
+	var oldAnchor int64
+	_ = db.QueryRow(`SELECT COALESCE(MAX(anchor_date),0) FROM QfqMeta WHERE code=?`, code).Scan(&oldAnchor)
+
+	newCount := len(resp.List)
+	var newAnchor int64 = 0
+	for _, v := range resp.List {
+		if u := v.Time.Unix(); u > newAnchor {
+			newAnchor = u
+		}
+	}
+	if newCount*10 < oldCount*9 {
+		return fmt.Sprintf("疑似截短: 新 %d 行 < 旧 %d 行×0.9", newCount, oldCount)
+	}
+	if oldAnchor > 0 && newAnchor < oldAnchor {
+		return fmt.Sprintf("历史倒退: 新锚点 %d < 旧锚点 %d", newAnchor, oldAnchor)
+	}
+	return ""
+}
+
+// withQfqCacheMeta 为缓存降级服务附上元信息标注（stale=true）
+func withQfqCacheMeta(resp *protocol.KlineResp, meta *qfqMeta, stale bool) *protocol.KlineResp {
+	if resp == nil {
+		return nil
+	}
+	if meta != nil {
+		resp.CacheMeta = &protocol.KlineCacheMeta{
+			AnchorDate: meta.AnchorDate,
+			Stale:      stale,
+			BuiltAt:    meta.BuiltAt,
+		}
+	}
+	return resp
 }
 
 // touchQfqMeta 无新增 bar 时仅刷新校验时间
